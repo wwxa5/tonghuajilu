@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>通话记录分析研判</title>
+    <!-- 引入 Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #4CAF50;
+            margin-bottom: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .description-section {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .description-section > div {
+            flex: 1;
+        }
+        .input-section {
+            margin-bottom: 20px;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .status-message {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border: 1px solid #ddd;
+            text-align: center;
+            font-weight: bold;
+            color: #4CAF50;
+        }
+        .output-section {
+            margin-top: 20px;
+        }
+        .output-section h2 {
+            color: #4CAF50;
+            margin-bottom: 10px;
+        }
+        .output-section h3 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .output-section h4 {
+            color: #555;
+            margin-bottom: 10px;
+        }
+        .progress {
+            margin-top: 10px;
+            height: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>通话记录分析研判</h1>
+        <div class="description-section">
+            <div class="field-description">
+                <h3>校对字段说明</h4>
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>字段名称</th>
+                            <th>说明</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>对方号码</td>
+                            <td>通话的对方号码。</td>
+                        </tr>
+                        <tr>
+                            <td>对方归属地名称</td>
+                            <td>对方号码的归属地名称。</td>
+                        </tr>
+                        <tr>
+                            <td>己方号码</td>
+                            <td>通话的己方号码。</td>
+                        </tr>
+                        <tr>
+                            <td>LAC</td>
+                            <td>位置区码（Location Area Code）。</td>
+                        </tr>
+                        <tr>
+                            <td>CI</td>
+                            <td>小区识别码（Cell Identity）。</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="function-description">
+                <h3>实现功能说明</h5>
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>功能</th>
+                            <th>说明</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>汇总对方号码的次数、时长</td>
+                            <td>统计每个对方号码的通话次数和通话时长合计</td>
+                        </tr>
+                        <tr>
+                            <td>设置时间节点，分别统计时间节点前后对方号码的次数、时长</td>
+                            <td>根据用户设置的时间节点，分别统计节点前后的对方号码</td>
+                        </tr>
+                        <tr>
+                            <td>分析节点时间后新的对方号码</td>
+                            <td>统计时间节点之后新出现的对方号码</td>
+                        </tr>
+                        <tr>
+                            <td>己方号码通话基站排序查找落脚点（单独排序凌晨通话位置）</td>
+                            <td>统计己方号码在 00:00:01 至 08:00:00 时间段的通话基站信息</td>
+                        </tr>
+                        <tr>
+                            <td>N个主叫号码的共同通话对方</td>
+                            <td>统计多个己方号码的共同通话对方号码</td>
+                        </tr>
+                        <tr>
+                            <td>凌晨00:00:01至07:00:00有通话对方号码汇总</td>
+                            <td>统计凌晨00:00:01至07:00:00时间段的通话对方号码</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="input-section">
+            <div class="mb-3">
+                <label for="fileInput" class="form-label">上传通话记录文件（支持 .xls 和 .xlsx）</label>
+                <input class="form-control" type="file" id="fileInput" accept=".xlsx,.xls" multiple />
+            </div>
+            <div class="mb-3">
+                <label for="timeNode" class="form-label">设置时间节点</label>
+                <input class="form-control" type="datetime-local" id="timeNode" />
+            </div>
+            <div class="button-group">
+                <button class="btn btn-primary" onclick="analyze()">分析</button>
+                <button class="btn btn-success" onclick="downloadResults()">下载结果</button>
+            </div>
+            <div class="progress" id="progressBar" style="display: none;">
+                <div class="progress-bar" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+            </div>
+        </div>
+        <div class="status-message" id="statusMessage"></div>
+        <div class="output-section">
+            <h2>通话详单分析结果</h2>
+            <div>
+                <h3>对方号码次数汇总（降序）</h3>
+                <table class="table table-bordered" id="numberCountTable">
+                    <thead>
+                        <tr>
+                            <th>对方号码</th>
+                            <th>对方归属地名称</th>
+                            <th>次数</th>
+                            <th>通话时长合计（HH:mm:ss）</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+            <div>
+                <h3>按时间节点统计</h3>
+                <div>
+                    <h4>时间节点之前</h4>
+                    <table class="table table-bordered" id="beforeTimeNodeTable">
+                        <thead>
+                            <tr>
+                                <th>对方号码</th>
+                                <th>对方归属地名称</th>
+                                <th>次数</th>
+                                <th>通话时长合计（HH:mm:ss）</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+                <div>
+                    <h4>时间节点之后</h4>
+                    <table class="table table-bordered" id="afterTimeNodeTable">
+                        <thead>
+                            <tr>
+                                <th>对方号码</th>
+                                <th>对方归属地名称</th>
+                                <th>次数</th>
+                                <th>通话时长合计（HH:mm:ss）</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+                <div>
+                    <h4>时间节点之后新出现的号码</h4>
+                    <table class="table table-bordered" id="newNumbersTable">
+                        <thead>
+                            <tr>
+                                <th>对方号码</th>
+                                <th>对方归属地名称</th>
+                                <th>次数</th>
+                                <th>通话时长合计（HH:mm:ss）</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div>
+                <h3>己方号码 LAC CI 统计</h3>
+                <div>
+                    <h4>己方号码 LAC CI 次数汇总（降序）</h4>
+                    <table class="table table-bordered" id="selfNumberLacCiTable">
+                        <thead>
+                            <tr>
+                                <th>己方号码</th>
+                                <th>LAC</th>
+                                <th>CI</th>
+                                <th>次数</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+                <div>
+                    <h4>己方号码 LAC CI 在 00:00:01 至 08:00:00 的次数汇总（降序）</h4>
+                    <table class="table table-bordered" id="selfNumberLacCiNightTable">
+                        <thead>
+                            <tr>
+                                <th>己方号码</th>
+                                <th>LAC</th>
+                                <th>CI</th>
+                                <th>次数</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div>
+                <h3>时间节点前后共同的对方号码</h3>
+                <div>
+                    <h4>时间节点之前共同的对方号码</h4>
+                    <table class="table table-bordered" id="commonNumbersBeforeTable">
+                        <thead>
+                            <tr>
+                                <th>对方号码</th>
+                                <th>对方归属地名称</th>
+                                <th>己方号码</th>
+                                <th>次数</th>
+                                <th>通话时长合计（HH:mm:ss）</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+                <div>
+                    <h4>时间节点之后共同的对方号码</h4>
+                    <table class="table table-bordered" id="commonNumbersAfterTable">
+                        <thead>
+                            <tr>
+                                <th>对方号码</th>
+                                <th>对方归属地名称</th>
+                                <th>己方号码</th>
+                                <th>次数</th>
+                                <th>通话时长合计（HH:mm:ss）</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+                <div>
+                    <h4>时间节点之后新的共同的对方号码</h4>
+                    <table class="table table-bordered" id="newCommonNumbersAfterTable">
+                        <thead>
+                            <tr>
+                                <th>对方号码</th>
+                                <th>对方归属地名称</th>
+                                <th>己方号码</th>
+                                <th>次数</th>
+                                <th>通话时长合计（HH:mm:ss）</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div>
+                <h3>凌晨00:00:01至07:00:00有通话对方号码汇总</h3>
+                <table class="table table-bordered" id="earlyMorningCallsTable">
+                    <thead>
+                        <tr>
+                            <th>对方号码</th>
+                            <th>对方归属地名称</th>
+                            <th>次数</th>
+                            <th>通话时长合计（HH:mm:ss）</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 引入 Bootstrap JS 和依赖 -->
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.min.js"></script>
+    <!-- 引入 XLSX 库 -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.17.0/dist/xlsx.full.min.js"></script>
+    <script>
+        let data = [];
+
+        // 将秒转换为 HH:mm:ss 格式
+        function secondsToHms(seconds) {
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = Math.floor(seconds % 60);
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        }
+
+        // 将 HH:mm:ss 格式转换为秒
+        function hmsToSeconds(hms) {
+            const [h, m, s] = hms.split(':').map(Number);
+            return h * 3600 + m * 60 + s;
+        }
+
+        // 累加 HH:mm:ss 格式的时间
+        function addHmsTimes(time1, time2) {
+            const seconds1 = hmsToSeconds(time1);
+            const seconds2 = hmsToSeconds(time2);
+            return secondsToHms(seconds1 + seconds2);
+        }
+
+        // 判断时间是否在 00:00:01 至 07:00:00 之间
+        function isEarlyMorningTime(time) {
+            const hours = time.getHours();
+            const minutes = time.getMinutes();
+            const seconds = time.getSeconds();
+            const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+            return totalSeconds >= 1 && totalSeconds <= 7 * 3600; // 00:00:01 至 07:00:00
+        }
+
+        async function analyze() {
+            const fileInput = document.getElementById('fileInput');
+            const timeNodeInput = document.getElementById('timeNode');
+            const timeNode = new Date(timeNodeInput.value).getTime();
+            const statusMessage = document.getElementById('statusMessage');
+            const progressBar = document.getElementById('progressBar');
+            const progressBarInner = progressBar.querySelector('.progress-bar');
+
+            if (!fileInput.files.length) {
+                statusMessage.textContent = '请选择一个文件';
+                statusMessage.style.color = 'red';
+                return;
+            }
+
+            // 清空数据
+            data = [];
+            statusMessage.textContent = '正在分析中，请稍候...';
+            statusMessage.style.color = '#4CAF50';
+            progressBar.style.display = 'block';
+            progressBarInner.style.width = '0%';
+
+            // 读取所有文件
+            const files = Array.from(fileInput.files);
+            let processedFiles = 0;
+
+            for (const file of files) {
+                const fileData = await readFile(file);
+                data = data.concat(fileData);
+                processedFiles++;
+                progressBarInner.style.width = `${(processedFiles / files.length) * 100}%`;
+            }
+
+            // 验证必有字段
+            const requiredFields = ['开始时间', '对方号码', '通话时长', '对方归属地名称', '己方号码', 'LAC', 'CI'];
+            const missingFields = [];
+            const firstRow = data[0];
+
+            if (!firstRow) {
+                statusMessage.textContent = '文件为空或格式不正确';
+                statusMessage.style.color = 'red';
+                return;
+            }
+
+            requiredFields.forEach(field => {
+                if (!(field in firstRow)) {
+                    missingFields.push(field);
+                }
+            });
+
+            if (missingFields.length > 0) {
+                statusMessage.textContent = '文件缺少以下必要字段：' + missingFields.join(', ');
+                statusMessage.style.color = 'red';
+                return;
+            }
+
+            // 汇总对方号码次数和通话时长
+            const numberCountMap = new Map(); // 号码次数汇总
+            const beforeTimeNodeMap = new Map(); // 时间节点前统计
+            const afterTimeNodeMap = new Map(); // 时间节点后统计
+            const newNumbersMap = new Map(); // 时间节点之后新出现的号码
+            const earlyMorningCallsMap = new Map(); // 凌晨00:00:01至07:00:00有通话对方号码汇总
+
+            // 记录时间节点之前的所有号码
+            const numbersBeforeNode = new Set();
+
+            // 第一次遍历：记录时间节点之前的所有号码
+            data.forEach(record => {
+                const number = record['对方号码'];
+                const startTime = new Date(record['开始时间']).getTime();
+
+                if (startTime < timeNode) {
+                    numbersBeforeNode.add(number);
+                }
+            });
+
+            // 第二次遍历：统计时间节点之后的通话记录，并找出新出现的号码
+            data.forEach(record => {
+                const number = record['对方号码'];
+                const duration = record['通话时长'];
+                const location = record['对方归属地名称'];
+                const startTime = new Date(record['开始时间']);
+
+                // 将通话时长转换为 HH:mm:ss 格式
+                const durationHms = secondsToHms(duration);
+
+                // 对方号码次数汇总
+                if (!numberCountMap.has(number)) {
+                    numberCountMap.set(number, { count: 0, totalDuration: '00:00:00', location });
+                } else if (numberCountMap.get(number).location !== location) {
+                    statusMessage.textContent = `对方号码 ${number} 的归属地名称不一致：${numberCountMap.get(number).location} 与 ${location}`;
+                    statusMessage.style.color = 'red';
+                    return;
+                }
+                numberCountMap.get(number).count += 1;
+                numberCountMap.get(number).totalDuration = addHmsTimes(numberCountMap.get(number).totalDuration, durationHms);
+
+                // 按时间节点统计
+                if (startTime.getTime() < timeNode) {
+                    if (!beforeTimeNodeMap.has(number)) {
+                        beforeTimeNodeMap.set(number, { count: 0, totalDuration: '00:00:00', location });
+                    } else if (beforeTimeNodeMap.get(number).location !== location) {
+                        statusMessage.textContent = `对方号码 ${number} 的归属地名称不一致：${beforeTimeNodeMap.get(number).location} 与 ${location}`;
+                        statusMessage.style.color = 'red';
+                        return;
+                    }
+                    beforeTimeNodeMap.get(number).count += 1;
+                    beforeTimeNodeMap.get(number).totalDuration = addHmsTimes(beforeTimeNodeMap.get(number).totalDuration, durationHms);
+                } else {
+                    if (!afterTimeNodeMap.has(number)) {
+                        afterTimeNodeMap.set(number, { count: 0, totalDuration: '00:00:00', location });
+                    } else if (afterTimeNodeMap.get(number).location !== location) {
+                        statusMessage.textContent = `对方号码 ${number} 的归属地名称不一致：${afterTimeNodeMap.get(number).location} 与 ${location}`;
+                        statusMessage.style.color = 'red';
+                        return;
+                    }
+                    afterTimeNodeMap.get(number).count += 1;
+                    afterTimeNodeMap.get(number).totalDuration = addHmsTimes(afterTimeNodeMap.get(number).totalDuration, durationHms);
+
+                    // 如果号码在时间节点之前未出现过，则记录为新号码
+                    if (!numbersBeforeNode.has(number)) {
+                        if (!newNumbersMap.has(number)) {
+                            newNumbersMap.set(number, { count: 0, totalDuration: '00:00:00', location });
+                        } else if (newNumbersMap.get(number).location !== location) {
+                            statusMessage.textContent = `对方号码 ${number} 的归属地名称不一致：${newNumbersMap.get(number).location} 与 ${location}`;
+                            statusMessage.style.color = 'red';
+                            return;
+                        }
+                        newNumbersMap.get(number).count += 1;
+                        newNumbersMap.get(number).totalDuration = addHmsTimes(newNumbersMap.get(number).totalDuration, durationHms);
+                    }
+                }
+
+                // 统计凌晨00:00:01至07:00:00的通话记录
+                if (isEarlyMorningTime(startTime)) {
+                    if (!earlyMorningCallsMap.has(number)) {
+                        earlyMorningCallsMap.set(number, { count: 0, totalDuration: '00:00:00', location });
+                    } else if (earlyMorningCallsMap.get(number).location !== location) {
+                        statusMessage.textContent = `对方号码 ${number} 的归属地名称不一致：${earlyMorningCallsMap.get(number).location} 与 ${location}`;
+                        statusMessage.style.color = 'red';
+                        return;
+                    }
+                    earlyMorningCallsMap.get(number).count += 1;
+                    earlyMorningCallsMap.get(number).totalDuration = addHmsTimes(earlyMorningCallsMap.get(number).totalDuration, durationHms);
+                }
+            });
+
+            // 统计己方号码 LAC CI 的次数汇总
+            const selfNumberLacCiMap = new Map(); // 己方号码 LAC CI 统计
+            const selfNumberLacCiNightMap = new Map(); // 己方号码 LAC CI 在 00:00:01 至 08:00:00 的统计
+
+            data.forEach(record => {
+                const selfNumber = record['己方号码'];
+                const lac = record['LAC'];
+                const ci = record['CI'];
+                const startTime = new Date(record['开始时间']);
+
+                // 己方号码 LAC CI 统计
+                const key = `${selfNumber}-${lac}-${ci}`;
+                if (!selfNumberLacCiMap.has(key)) {
+                    selfNumberLacCiMap.set(key, { selfNumber, lac, ci, count: 0 });
+                }
+                selfNumberLacCiMap.get(key).count += 1;
+
+                // 己方号码 LAC CI 在 00:00:01 至 08:00:00 的统计
+                if (isEarlyMorningTime(startTime)) {
+                    if (!selfNumberLacCiNightMap.has(key)) {
+                        selfNumberLacCiNightMap.set(key, { selfNumber, lac, ci, count: 0 });
+                    }
+                    selfNumberLacCiNightMap.get(key).count += 1;
+                }
+            });
+
+            // 统计时间节点前后共同的对方号码
+            const commonNumbersBeforeMap = new Map(); // 时间节点之前共同的对方号码
+            const commonNumbersAfterMap = new Map(); // 时间节点之后共同的对方号码
+            const newCommonNumbersAfterMap = new Map(); // 时间节点之后新的共同的对方号码
+
+            // 记录时间节点前后的对方号码
+            const numbersBeforeNodeMap = new Map(); // 时间节点之前的对方号码
+            const numbersAfterNodeMap = new Map(); // 时间节点之后的对方号码
+
+            data.forEach(record => {
+                const number = record['对方号码'];
+                const selfNumber = record['己方号码'];
+                const duration = record['通话时长'];
+                const location = record['对方归属地名称'];
+                const startTime = new Date(record['开始时间']).getTime();
+
+                // 将通话时长转换为 HH:mm:ss 格式
+                const durationHms = secondsToHms(duration);
+
+                if (startTime < timeNode) {
+                    if (!numbersBeforeNodeMap.has(number)) {
+                        numbersBeforeNodeMap.set(number, new Set());
+                    }
+                    numbersBeforeNodeMap.get(number).add(selfNumber);
+                } else {
+                    if (!numbersAfterNodeMap.has(number)) {
+                        numbersAfterNodeMap.set(number, new Set());
+                    }
+                    numbersAfterNodeMap.get(number).add(selfNumber);
+                }
+            });
+
+            // 找出时间节点之前共同的对方号码
+            numbersBeforeNodeMap.forEach((selfNumbers, number) => {
+                if (selfNumbers.size > 1) {
+                    if (!commonNumbersBeforeMap.has(number)) {
+                        commonNumbersBeforeMap.set(number, { location: '', selfNumbers: [], count: 0, totalDuration: '00:00:00' });
+                    }
+                    commonNumbersBeforeMap.get(number).selfNumbers = Array.from(selfNumbers);
+                }
+            });
+
+            // 找出时间节点之后共同的对方号码
+            numbersAfterNodeMap.forEach((selfNumbers, number) => {
+                if (selfNumbers.size > 1) {
+                    if (!commonNumbersAfterMap.has(number)) {
+                        commonNumbersAfterMap.set(number, { location: '', selfNumbers: [], count: 0, totalDuration: '00:00:00' });
+                    }
+                    commonNumbersAfterMap.get(number).selfNumbers = Array.from(selfNumbers);
+
+                    // 如果号码在时间节点之前没有共同的对方号码，则记录为新的共同号码
+                    if (!commonNumbersBeforeMap.has(number)) {
+                        if (!newCommonNumbersAfterMap.has(number)) {
+                            newCommonNumbersAfterMap.set(number, { location: '', selfNumbers: [], count: 0, totalDuration: '00:00:00' });
+                        }
+                        newCommonNumbersAfterMap.get(number).selfNumbers = Array.from(selfNumbers);
+                    }
+                }
+            });
+
+            // 填充共同的对方号码的通话记录
+            data.forEach(record => {
+                const number = record['对方号码'];
+                const duration = record['通话时长'];
+                const location = record['对方归属地名称'];
+                const startTime = new Date(record['开始时间']).getTime();
+
+                // 将通话时长转换为 HH:mm:ss 格式
+                const durationHms = secondsToHms(duration);
+
+                if (startTime < timeNode && commonNumbersBeforeMap.has(number)) {
+                    commonNumbersBeforeMap.get(number).location = location;
+                    commonNumbersBeforeMap.get(number).count += 1;
+                    commonNumbersBeforeMap.get(number).totalDuration = addHmsTimes(commonNumbersBeforeMap.get(number).totalDuration, durationHms);
+                } else if (startTime >= timeNode && commonNumbersAfterMap.has(number)) {
+                    commonNumbersAfterMap.get(number).location = location;
+                    commonNumbersAfterMap.get(number).count += 1;
+                    commonNumbersAfterMap.get(number).totalDuration = addHmsTimes(commonNumbersAfterMap.get(number).totalDuration, durationHms);
+
+                    // 如果是新的共同号码，则填充数据
+                    if (newCommonNumbersAfterMap.has(number)) {
+                        newCommonNumbersAfterMap.get(number).location = location;
+                        newCommonNumbersAfterMap.get(number).count += 1;
+                        newCommonNumbersAfterMap.get(number).totalDuration = addHmsTimes(newCommonNumbersAfterMap.get(number).totalDuration, durationHms);
+                    }
+                }
+            });
+
+            // 排序并显示结果
+            displayTable(numberCountMap, 'numberCountTable', (a, b) => b[1].count - a[1].count);
+            displayTable(beforeTimeNodeMap, 'beforeTimeNodeTable', (a, b) => b[1].count - a[1].count);
+            displayTable(afterTimeNodeMap, 'afterTimeNodeTable', (a, b) => b[1].count - a[1].count);
+            displayTable(newNumbersMap, 'newNumbersTable', (a, b) => b[1].count - a[1].count);
+            displayTable(earlyMorningCallsMap, 'earlyMorningCallsTable', (a, b) => b[1].count - a[1].count);
+            displaySelfNumberTable(selfNumberLacCiMap, 'selfNumberLacCiTable');
+            displaySelfNumberTable(selfNumberLacCiNightMap, 'selfNumberLacCiNightTable');
+            displayCommonNumbersTable(commonNumbersBeforeMap, 'commonNumbersBeforeTable');
+            displayCommonNumbersTable(commonNumbersAfterMap, 'commonNumbersAfterTable');
+            displayCommonNumbersTable(newCommonNumbersAfterMap, 'newCommonNumbersAfterTable');
+
+            // 分析完成提示
+            statusMessage.textContent = '分析完成！';
+            statusMessage.style.color = '#4CAF50';
+            progressBar.style.display = 'none';
+        }
+
+        // 读取文件内容
+        function readFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const arrayBuffer = e.target.result;
+                    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+                    const sheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[sheetName];
+                    const json = XLSX.utils.sheet_to_json(worksheet);
+                    resolve(json);
+                };
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        function displayTable(map, tableId, sortFn) {
+            const table = document.getElementById(tableId).getElementsByTagName('tbody')[0];
+            table.innerHTML = '';
+
+            const sortedEntries = Array.from(map.entries()).sort(sortFn);
+
+            sortedEntries.forEach(([number, { count, totalDuration, location }]) => {
+                const row = table.insertRow();
+                row.insertCell().textContent = number;
+                row.insertCell().textContent = location;
+                row.insertCell().textContent = count;
+                row.insertCell().textContent = totalDuration;
+            });
+        }
+
+        function displaySelfNumberTable(map, tableId) {
+            const table = document.getElementById(tableId).getElementsByTagName('tbody')[0];
+            table.innerHTML = '';
+
+            const sortedEntries = Array.from(map.values()).sort((a, b) => b.count - a.count);
+
+            sortedEntries.forEach(({ selfNumber, lac, ci, count }) => {
+                const row = table.insertRow();
+                row.insertCell().textContent = selfNumber;
+                row.insertCell().textContent = lac;
+                row.insertCell().textContent = ci;
+                row.insertCell().textContent = count;
+            });
+        }
+
+        function displayCommonNumbersTable(map, tableId) {
+            const table = document.getElementById(tableId).getElementsByTagName('tbody')[0];
+            table.innerHTML = '';
+
+            const sortedEntries = Array.from(map.entries()).sort((a, b) => b[1].count - a[1].count);
+
+            sortedEntries.forEach(([number, { location, selfNumbers, count, totalDuration }]) => {
+                const row = table.insertRow();
+                row.insertCell().textContent = number;
+                row.insertCell().textContent = location;
+                row.insertCell().textContent = selfNumbers.join(', ');
+                row.insertCell().textContent = count;
+                row.insertCell().textContent = totalDuration;
+            });
+        }
+
+        function downloadResults() {
+            const wb = XLSX.utils.book_new();
+
+            // 将表格数据转换为工作表
+            const ws1 = XLSX.utils.table_to_sheet(document.getElementById('numberCountTable'), { raw: true });
+            const ws2 = XLSX.utils.table_to_sheet(document.getElementById('beforeTimeNodeTable'), { raw: true });
+            const ws3 = XLSX.utils.table_to_sheet(document.getElementById('afterTimeNodeTable'), { raw: true });
+            const ws4 = XLSX.utils.table_to_sheet(document.getElementById('newNumbersTable'), { raw: true });
+            const ws5 = XLSX.utils.table_to_sheet(document.getElementById('earlyMorningCallsTable'), { raw: true });
+            const ws6 = XLSX.utils.table_to_sheet(document.getElementById('selfNumberLacCiTable'), { raw: true });
+            const ws7 = XLSX.utils.table_to_sheet(document.getElementById('selfNumberLacCiNightTable'), { raw: true });
+            const ws8 = XLSX.utils.table_to_sheet(document.getElementById('commonNumbersBeforeTable'), { raw: true });
+            const ws9 = XLSX.utils.table_to_sheet(document.getElementById('commonNumbersAfterTable'), { raw: true });
+            const ws10 = XLSX.utils.table_to_sheet(document.getElementById('newCommonNumbersAfterTable'), { raw: true });
+
+            // 将通话时长合计列设置为文本格式
+            const setTextFormat = (ws, colIndex) => {
+                const range = XLSX.utils.decode_range(ws['!ref']);
+                for (let row = range.s.r + 1; row <= range.e.r; row++) {
+                    const cellAddress = XLSX.utils.encode_cell({ r: row, c: colIndex });
+                    if (ws[cellAddress]) {
+                        ws[cellAddress].t = 's'; // 设置为文本格式
+                    }
+                }
+            };
+
+            // 设置通话时长合计列为文本格式
+            setTextFormat(ws1, 3); // 号码次数汇总表的第4列
+            setTextFormat(ws2, 3); // 时间节点前汇总表的第4列
+            setTextFormat(ws3, 3); // 时间节点后汇总表的第4列
+            setTextFormat(ws4, 3); // 新出现号码汇总表的第4列
+            setTextFormat(ws5, 3); // 凌晨通话汇总表的第4列
+            setTextFormat(ws8, 4); // 时间节点之前共同的对方号码表的第5列
+            setTextFormat(ws9, 4); // 时间节点之后共同的对方号码表的第5列
+            setTextFormat(ws10, 4); // 时间节点之后新的共同的对方号码表的第5列
+
+            // 将工作表添加到工作簿
+            XLSX.utils.book_append_sheet(wb, ws1, '号码次数汇总');
+            XLSX.utils.book_append_sheet(wb, ws2, '时间节点前汇总');
+            XLSX.utils.book_append_sheet(wb, ws3, '时间节点后汇总');
+            XLSX.utils.book_append_sheet(wb, ws4, '新出现号码汇总');
+            XLSX.utils.book_append_sheet(wb, ws5, '凌晨通话汇总');
+            XLSX.utils.book_append_sheet(wb, ws6, '己方号码 LAC CI 汇总');
+            XLSX.utils.book_append_sheet(wb, ws7, '己方号码 LAC CI 夜间汇总');
+            XLSX.utils.book_append_sheet(wb, ws8, '时间节点之前共同的对方号码');
+            XLSX.utils.book_append_sheet(wb, ws9, '时间节点之后共同的对方号码');
+            XLSX.utils.book_append_sheet(wb, ws10, '时间节点之后新的共同的对方号码');
+
+            // 下载Excel文件
+            XLSX.writeFile(wb, '通话详单分析结果.xlsx');
+        }
+    </script>
+</body>
+</html>
